@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=8G
-#SBATCH --time=00:30:00
+#SBATCH --time=08:30:00
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=qp24@queensu.ca
 #SBATCH -o %x.%j.out
