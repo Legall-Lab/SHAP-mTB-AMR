@@ -3,8 +3,11 @@
 # Usage:
 # process_tb_sample.sh RUN_ID FASTQ_DIR QC_DIR BAM_DIR VCF_DIR REF
 
+
 set -euo pipefail
 
+# ---------- Resume protection ----------
+# If final VCF already exists, skip this sample
 RUN_ID=$1
 FASTQ_DIR=$2
 QC_DIR=$3
@@ -12,9 +15,14 @@ BAM_DIR=$4
 VCF_DIR=$5
 REF=$6
 
+if [ -f "$VCF_DIR/${RUN_ID}.vcf.gz" ]; then
+    echo "${RUN_ID} already processed. Skipping."
+    exit 0
+fi
+
 THREADS=${THREADS:-8}
 
-# Ensure output directories exist (safe if they already exist)
+# Ensure output directories exist 
 mkdir -p "$FASTQ_DIR"
 mkdir -p "$QC_DIR"
 mkdir -p "$BAM_DIR"
@@ -28,8 +36,19 @@ echo "VCF_DIR: $VCF_DIR"
 echo "RUN_ID: $RUN_ID"
 
 # ---------- 1. Download FASTQ ----------
+# Print node information for debugging heterogeneous HPC nodes
+
+echo "Running on node: $(hostname)"
+lscpu | head
+
+# Use prefetch + fasterq-dump (more stable on HPC clusters)
 if [ ! -f "$FASTQ_DIR/${RUN_ID}_1.fastq" ]; then
-    fasterq-dump "$RUN_ID" -O "$FASTQ_DIR" --threads "$THREADS"
+    prefetch "$RUN_ID"
+
+    fasterq-dump "$RUN_ID" \
+        --split-files \
+        --threads 1 \
+        -O "$FASTQ_DIR"
 fi
 
 # ---------- 2. QC ----------
@@ -59,3 +78,12 @@ bcftools index "$VCF_DIR/${RUN_ID}.vcf.gz"
 
 # ---------- 5. Cleanup large intermediates ----------
 rm -f "$FASTQ_DIR/${RUN_ID}_1.fastq" "$FASTQ_DIR/${RUN_ID}_2.fastq"
+rm -f "$QC_DIR/${RUN_ID}_1.clean.fastq" "$QC_DIR/${RUN_ID}_2.clean.fastq"
+rm -f "$BAM_DIR/${RUN_ID}.bam" "$BAM_DIR/${RUN_ID}.bam.bai"
+
+# Remove SRA download directory created by prefetch
+if [ -d "$RUN_ID" ]; then
+    rm -rf "$RUN_ID"
+fi
+
+echo "[$RUN_ID] pipeline finished successfully"
